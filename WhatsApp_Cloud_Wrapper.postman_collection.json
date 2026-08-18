@@ -1,0 +1,59 @@
+{
+	"info": {
+		"_postman_id": "f5f14be9-33b2-4d2c-9a41-3e4b7c6b9e2c",
+		"name": "WhatsApp Cloud API Wrapper (Rust)",
+		"description": "Koleksi Postman untuk menguji API Gateway/Wrapper WhatsApp Cloud berbasis Rust.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Messages",
+			"item": [
+				{
+					"name": "1. Send Text Message",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"to\": \"{{test_phone_number}}\",\n    \"text\": \"Halo! Ini pesan pengujian dari Rust Wrapper API 🔥\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/message/send",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"message",
+								"send"
+							]
+						},
+						"description": "Mengirimkan pesan teks sederhana. Wrapper akan secara otomatis menyisipkan Bearer Token dan merakit JSON yang sesuai standar Meta Graph API."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint yang berurusan dengan pengiriman pesan keluar."
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "test_phone_number",
+			"value": "6281234567890",
+			"type": "string",
+			"description": "Gunakan kode negara tanpa tanda +"
+		}
+	]
+}
