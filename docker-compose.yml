@@ -6,6 +6,15 @@ services:
     container_name: waras
     ports:
       - "25335:3000"
+    environment:
+      - TZ=Asia/Jakarta
     env_file:
       - .env
     restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  default:
+    name: satuarah-network
+    external: true
