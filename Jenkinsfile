@@ -26,18 +26,50 @@ pipeline {
         stage('Prepare Environment') {
             steps {
                 script {
-                    withCredentials([file(credentialsId: 'env-api-waras.satuarah.id', variable: 'JENKINS_ENV_FILE')]) {
-                        sh '''
-                            set -eu
-                            cp "$JENKINS_ENV_FILE" .env
-                            cp "$JENKINS_ENV_FILE" .env.production
-                            chmod 600 .env .env.production
-                            
-                            echo "=== DEBUG: Isi file .env yang ditarik Jenkins ==="
-                            cat .env || true
-                            echo "================================================="
-                        '''
-                    }
+                    echo "-------------------------------------------------------"
+                    echo "STAGE: Setup Environment Variables from Infisical Plugin"
+                    echo "-------------------------------------------------------"
+                }
+                withInfisical(
+                    configuration: [
+                        infisicalCredentialId: 'infisical-satuarah',
+                        infisicalEnvironmentSlug: 'prod',
+                        infisicalProjectSlug: 'satuarah-vs-o4',
+                        infisicalUrl: 'https://app.infisical.com'
+                    ],
+                    infisicalSecrets: [
+                        infisicalSecret(
+                            includeImports: true,
+                            path: '/waras',
+                            secretValues: [
+                                [infisicalKey: 'PORT', isRequired: false],
+                                [infisicalKey: 'WHATSAPP_PHONE_NUMBER_ID', isRequired: true],
+                                [infisicalKey: 'FACEBOOK_API_TOKEN', isRequired: true],
+                                [infisicalKey: 'FACEBOOK_CLIENT_ID', isRequired: false],
+                                [infisicalKey: 'FACEBOOK_CLIENT_SECRET', isRequired: false],
+                                [infisicalKey: 'WEBHOOK_VERIFY_TOKEN', isRequired: true],
+                                [infisicalKey: 'WEBHOOK_FORWARD_URL', isRequired: false],
+                                [infisicalKey: 'FORWARD_WEBHOOK_URL', isRequired: false]
+                            ]
+                        )
+                    ]
+                ) {
+                    sh '''
+                        set -eu
+
+                        cat <<EOF > .env
+PORT=${PORT:-3000}
+WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+FACEBOOK_API_TOKEN=${FACEBOOK_API_TOKEN}
+FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}
+FACEBOOK_CLIENT_SECRET=${FACEBOOK_CLIENT_SECRET:-}
+WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN}
+WEBHOOK_FORWARD_URL=${WEBHOOK_FORWARD_URL:-${FORWARD_WEBHOOK_URL:-}}
+EOF
+                        cp .env .env.production
+                        chmod 600 .env .env.production
+                        echo "Environment file (.env & .env.production) generated successfully."
+                    '''
                 }
             }
         }
