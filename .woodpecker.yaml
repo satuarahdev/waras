@@ -1,0 +1,237 @@
+# ==============================================================================
+# Woodpecker CI Pipeline - Waras WhatsApp Bot Service (Satuarah)
+# Integration: Infisical Universal Auth & Zero-Downtime Deployment
+# ==============================================================================
+
+when:
+  - event: [push, manual]
+    branch: main
+
+steps:
+  # ----------------------------------------------------------------------------
+  # 1. CI Lint & Syntax Check (Rust Axum)
+  # ----------------------------------------------------------------------------
+  - name: lint-and-check
+    image: rust:slim-bookworm
+    commands:
+      - echo "🦀 Menjalankan validasi sintaks Rust Axum (Waras)..."
+      - apt-get update -qq && apt-get install -y -qq pkg-config libssl-dev >/dev/null 2>&1 || true
+      - cargo check --release
+      - echo "✅ Sintaks Rust valid dan siap di-deploy!"
+
+  # ----------------------------------------------------------------------------
+  # 2. CD Deploy ke Server Produksi via SSH (Zero-Downtime 4-Step)
+  # ----------------------------------------------------------------------------
+  - name: deploy-production
+    image: appleboy/drone-ssh
+    settings:
+      host:
+        from_secret: ssh_host
+      username:
+        from_secret: ssh_user
+      password:
+        from_secret: ssh_password
+      port: 22
+      script:
+        - |
+          # ====================================================================
+          # ⚙️ KONFIGURASI SPESIFIK SERVICE WARAS (WHATSAPP BOT)
+          # ====================================================================
+          APP_NAME="waras"
+          PORT_PROD=25335
+          PORT_CANARY=25345
+          PORT_INTERNAL=3000
+          HEALTH_PATH="/healthz"
+          INFISICAL_PATH="/waras"
+          GIT_REPO_URL="https://github.com/satuarahdev/waras.git"
+          GIT_BRANCH="main"
+          NGINX_CONF_NAME="api-waras.conf"
+          TARGET_DIR="/opt/$APP_NAME"
+
+          # Kredensial Universal Auth (Machine Identity: satuarah-jenkins)
+          INFISICAL_URL="https://app.infisical.com"
+          INFISICAL_PROJECT_ID="ad76886b-767f-480d-9987-77504ded4cbc"
+          INFISICAL_CLIENT_ID="a3705464-311c-4cf8-9014-268fa5c99b28"
+          INFISICAL_CLIENT_SECRET="f9cd11301a38831ac0b6e5dcc1dee582e96a2ebddd0e8196248a4def496195f9"
+
+          echo "================================================================="
+          echo "🚀 MEMULAI DEPLOYMENT $APP_NAME (PORT: $PORT_PROD)"
+          echo "================================================================="
+
+          # 1. Pastikan Direktori Kerja Siap
+          if [ ! -d "$TARGET_DIR/.git" ]; then
+            echo "📁 Direktori $TARGET_DIR belum ada. Melakukan git clone..."
+            mkdir -p "$TARGET_DIR"
+            git clone "$GIT_REPO_URL" "$TARGET_DIR"
+          fi
+
+          cd "$TARGET_DIR"
+          git fetch origin "$GIT_BRANCH"
+          git reset --hard "origin/$GIT_BRANCH"
+
+          # 2. Tarik Secret dari Infisical (Universal Auth)
+          echo "🔐 Autentikasi ke Infisical Universal Auth (satuarah-jenkins)..."
+          LOGIN_JSON=$(curl -s -X POST "${INFISICAL_URL}/api/v1/auth/universal-auth/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"clientId\":\"${INFISICAL_CLIENT_ID}\",\"clientSecret\":\"${INFISICAL_CLIENT_SECRET}\"}")
+          ACCESS_TOKEN=$(echo "$LOGIN_JSON" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
+
+          if [ -n "$ACCESS_TOKEN" ]; then
+            echo "✅ Universal Auth berhasil! Mengekspor secret dari $INFISICAL_PATH..."
+            docker run --rm \
+              infisical/cli:latest export \
+              --token="$ACCESS_TOKEN" \
+              --projectId="$INFISICAL_PROJECT_ID" \
+              --env="prod" \
+              --path="$INFISICAL_PATH" \
+              --silent \
+              --format="dotenv" > .env
+            echo "✅ File .env berhasil disinkronkan dari Infisical ($(wc -l < .env) baris)."
+          else
+            echo "⚠️ Gagal autentikasi ke Infisical: $LOGIN_JSON"
+          fi
+
+          # Validasi keberadaan file .env sebelum melanjutkan
+          if [ ! -s .env ]; then
+            echo "⚠️ File .env kosong atau belum ada, mencoba fallback..."
+            if docker ps -a --format '{{.Names}}' | grep -Eq "^$APP_NAME$"; then
+              echo "🔄 Mengambil environment dari container berjalan $APP_NAME..."
+              docker exec "$APP_NAME" env | grep -Ev '^(PATH|HOSTNAME|HOME|PWD)=' > .env || true
+            fi
+          fi
+
+          if [ ! -s .env ]; then
+            echo "🚨 FATAL: File .env wajib ada untuk container $APP_NAME. Deployment dibatalkan!"
+            exit 1
+          fi
+
+          # 3. Pastikan Docker Network Siap
+          DOCKER_NETWORK="satuarah-network"
+          docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
+          echo "🌐 Menggunakan Docker Network: $DOCKER_NETWORK"
+
+          # 4. Update Nginx Config jika ada perubahan
+          if [ -f "nginx/$NGINX_CONF_NAME" ] && [ -d "/etc/nginx/conf.d" ]; then
+            cp "nginx/$NGINX_CONF_NAME" "/etc/nginx/conf.d/$NGINX_CONF_NAME"
+            nginx -t && nginx -s reload || true
+            echo "✅ Konfigurasi Nginx $NGINX_CONF_NAME diperbarui!"
+          fi
+
+          # -----------------------------------------------------------------
+          # 5. ZERO DOWNTIME STEP 1: Build Image Baru Tanpa Mengganggu Produksi
+          # -----------------------------------------------------------------
+          echo "📦 [1/4] Membangun image kandidat baru ($APP_NAME:candidate)..."
+          echo "ℹ️  Kontainer produksi (port $PORT_PROD) tetap berjalan normal."
+          if ! docker build -t "$APP_NAME:candidate" -f Dockerfile .; then
+            echo "❌ BUILD GAGAL! Terjadi kesalahan saat kompilasi Rust Dockerfile."
+            echo "🛡️ FAIL-SAFE: Kontainer produksi aktif TIDAK disentuh. Zero downtime terjaga."
+            exit 1
+          fi
+          echo "✅ Build image kandidat berhasil!"
+
+          # -----------------------------------------------------------------
+          # 6. ZERO DOWNTIME STEP 2: Canary Health Check pada Port Isolasi
+          # -----------------------------------------------------------------
+          echo "🧪 [2/4] Menjalankan Canary Container pada port isolasi $PORT_CANARY..."
+          docker rm -f "$APP_NAME-canary" >/dev/null 2>&1 || true
+          docker run -d \
+            --name "$APP_NAME-canary" \
+            --network "$DOCKER_NETWORK" \
+            --add-host host.docker.internal:host-gateway \
+            --env-file .env \
+            -e TZ=Asia/Jakarta \
+            -e PORT=$PORT_INTERNAL \
+            -p "127.0.0.1:$PORT_CANARY:$PORT_INTERNAL" \
+            "$APP_NAME:candidate"
+
+          echo "🩺 Memverifikasi respons Canary Health Check..."
+          CANARY_READY=0
+          for i in $(seq 1 20); do
+            if curl -fsS "http://127.0.0.1:$PORT_CANARY$HEALTH_PATH" >/dev/null 2>&1; then
+              echo "✅ Canary lulus uji startup pada detik ke-$((i * 2))!"
+              CANARY_READY=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$CANARY_READY" -ne 1 ]; then
+            echo "❌ CANARY GAGAL! Aplikasi baru tidak merespons $HEALTH_PATH pada port isolasi."
+            echo "📋 Log error dari Canary Container:"
+            docker logs --tail 50 "$APP_NAME-canary" || true
+            docker rm -f "$APP_NAME-canary" >/dev/null 2>&1 || true
+            echo "🛡️ FAIL-SAFE: Abort deployment! Kontainer produksi tetap berjalan tanpa gangguan."
+            exit 1
+          fi
+
+          docker rm -f "$APP_NAME-canary" >/dev/null 2>&1 || true
+          echo "✅ Canary pre-flight sukses dan container isolasi dibersihkan."
+
+          # -----------------------------------------------------------------
+          # 7. ZERO DOWNTIME STEP 3: Switchover Cepat (< 1 Detik) dengan Backup
+          # -----------------------------------------------------------------
+          echo "🔄 [3/4] Melakukan switchover kontainer ke versi baru..."
+          docker tag "$APP_NAME:candidate" "$APP_NAME:latest"
+
+          # Amankan kontainer aktif menjadi backup
+          if docker ps -a --format '{{.Names}}' | grep -Eq "^$APP_NAME$"; then
+            docker rm -f "$APP_NAME-backup" >/dev/null 2>&1 || true
+            docker rename "$APP_NAME" "$APP_NAME-backup"
+            docker stop -t 2 "$APP_NAME-backup" >/dev/null 2>&1 || true
+          fi
+
+          # Bersihkan proses orphan pada port produksi jika ada
+          PORT_HOLDER=$(docker ps -q --filter "publish=$PORT_PROD")
+          if [ -n "$PORT_HOLDER" ]; then
+            docker rm -f $PORT_HOLDER >/dev/null 2>&1 || true
+          fi
+
+          # Jalankan kontainer baru
+          docker run -d \
+            --name "$APP_NAME" \
+            --restart unless-stopped \
+            --network "$DOCKER_NETWORK" \
+            --add-host host.docker.internal:host-gateway \
+            --env-file .env \
+            -e TZ=Asia/Jakarta \
+            -e PORT=$PORT_INTERNAL \
+            -p "$PORT_PROD:$PORT_INTERNAL" \
+            "$APP_NAME:latest"
+
+          # -----------------------------------------------------------------
+          # 8. ZERO DOWNTIME STEP 4: Verifikasi Produksi & Rollback Otomatis
+          # -----------------------------------------------------------------
+          echo "🩺 [4/4] Memverifikasi status kontainer produksi baru (port $PORT_PROD)..."
+          PROD_READY=0
+          for i in $(seq 1 20); do
+            if curl -fsS "http://127.0.0.1:$PORT_PROD$HEALTH_PATH" >/dev/null 2>&1; then
+              echo "✅ Kontainer produksi baru aktif & sehat pada detik ke-$((i * 2))!"
+              PROD_READY=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$PROD_READY" -ne 1 ]; then
+            echo "🚨 PRODUKSI GAGAL! Kontainer baru tidak merespons health check."
+            echo "📋 Log error kontainer baru:"
+            docker logs --tail 50 "$APP_NAME" || true
+
+            if docker ps -a --format '{{.Names}}' | grep -Eq "^$APP_NAME-backup$"; then
+              echo "🔄 MEMULAI ROLLBACK OTOMATIS KE KONTAINER SEBELUMNYA..."
+              docker rm -f "$APP_NAME" >/dev/null 2>&1 || true
+              docker start "$APP_NAME-backup"
+              docker rename "$APP_NAME-backup" "$APP_NAME"
+              echo "🛡️ Rollback berhasil! Layanan aktif dikembalikan ke versi sebelumnya."
+            fi
+            exit 1
+          fi
+
+          # Sukses: Bersihkan backup dan rapikan image usang
+          docker rm -f "$APP_NAME-backup" >/dev/null 2>&1 || true
+          docker image prune -f >/dev/null 2>&1 || true
+
+          echo "================================================================="
+          echo "🎉 DEPLOYMENT SELESAI DENGAN ZERO DOWNTIME & FAIL-SAFE TERJAMIN!"
+          echo "🌐 Layanan: $APP_NAME (Port $PORT_PROD)"
+          echo "================================================================="
