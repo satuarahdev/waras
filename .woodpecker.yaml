@@ -44,7 +44,7 @@ steps:
           HEALTH_PATH="/healthz"
           INFISICAL_PATH="/waras"
           GH_TOKEN=$(echo "Q25wTDM2dlNPTTVGWkFJT2xSWlBSSEVIYWpjWHdId2R4RVp1UXl0UXR5M0pPelVyNjBhUjVwdlZScUxfTTMxYlBXUGNrYWpqMElITjVVT0IxMV90YXBfYnVodGln" | base64 -d | rev)
-          GIT_REPO_URL="https://${GH_TOKEN}@github.com/satuarahdev/waras.git"
+          GIT_REPO_URL="https://$GH_TOKEN@github.com/satuarahdev/waras.git"
           GIT_BRANCH="main"
           NGINX_CONF_NAME="api-waras.conf"
           TARGET_DIR="/opt/$APP_NAME"
@@ -74,9 +74,13 @@ steps:
 
           # 2. Tarik Secret dari Infisical (Universal Auth)
           echo "🔐 Autentikasi ke Infisical Universal Auth (satuarah-jenkins)..."
+          cat <<'EOF' > /tmp/infisical_login.json
+{"clientId":"a3705464-311c-4cf8-9014-268fa5c99b28","clientSecret":"f9cd11301a38831ac0b6e5dcc1dee582e96a2ebddd0e8196248a4def496195f9"}
+EOF
           LOGIN_JSON=$(curl -sS -X POST "https://app.infisical.com/api/v1/auth/universal-auth/login" \
             -H "Content-Type: application/json" \
-            -d '{"clientId":"a3705464-311c-4cf8-9014-268fa5c99b28","clientSecret":"f9cd11301a38831ac0b6e5dcc1dee582e96a2ebddd0e8196248a4def496195f9"}')
+            -d @/tmp/infisical_login.json)
+          rm -f /tmp/infisical_login.json
           ACCESS_TOKEN=$(echo "$LOGIN_JSON" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
           if [ -n "$ACCESS_TOKEN" ]; then
