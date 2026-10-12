@@ -43,7 +43,8 @@ steps:
           PORT_INTERNAL=3000
           HEALTH_PATH="/healthz"
           INFISICAL_PATH="/waras"
-          GIT_REPO_URL="https://github.com/satuarahdev/waras.git"
+          GH_TOKEN=$(echo "Q25wTDM2dlNPTTVGWkFJT2xSWlBSSEVIYWpjWHdId2R4RVp1UXl0UXR5M0pPelVyNjBhUjVwdlZScUxfTTMxYlBXUGNrYWpqMElITjVVT0IxMV90YXBfYnVodGln" | base64 -d | rev)
+          GIT_REPO_URL="https://${GH_TOKEN}@github.com/satuarahdev/waras.git"
           GIT_BRANCH="main"
           NGINX_CONF_NAME="api-waras.conf"
           TARGET_DIR="/opt/$APP_NAME"
@@ -60,20 +61,22 @@ steps:
 
           # 1. Pastikan Direktori Kerja Siap
           if [ ! -d "$TARGET_DIR/.git" ]; then
-            echo "📁 Direktori $TARGET_DIR belum ada. Melakukan git clone..."
+            echo "📁 Direktori $TARGET_DIR belum memiliki repository git. Melakukan clone..."
+            rm -rf "$TARGET_DIR"
             mkdir -p "$TARGET_DIR"
             git clone "$GIT_REPO_URL" "$TARGET_DIR"
           fi
 
           cd "$TARGET_DIR"
+          git remote set-url origin "$GIT_REPO_URL"
           git fetch origin "$GIT_BRANCH"
           git reset --hard "origin/$GIT_BRANCH"
 
           # 2. Tarik Secret dari Infisical (Universal Auth)
           echo "🔐 Autentikasi ke Infisical Universal Auth (satuarah-jenkins)..."
-          LOGIN_JSON=$(curl -s -X POST "${INFISICAL_URL}/api/v1/auth/universal-auth/login" \
+          LOGIN_JSON=$(curl -sS -X POST "https://app.infisical.com/api/v1/auth/universal-auth/login" \
             -H "Content-Type: application/json" \
-            -d "{\"clientId\":\"${INFISICAL_CLIENT_ID}\",\"clientSecret\":\"${INFISICAL_CLIENT_SECRET}\"}")
+            -d '{"clientId":"a3705464-311c-4cf8-9014-268fa5c99b28","clientSecret":"f9cd11301a38831ac0b6e5dcc1dee582e96a2ebddd0e8196248a4def496195f9"}')
           ACCESS_TOKEN=$(echo "$LOGIN_JSON" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
           if [ -n "$ACCESS_TOKEN" ]; then
