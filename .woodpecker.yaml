@@ -74,11 +74,9 @@ steps:
 
           # 2. Tarik Secret dari Infisical (Universal Auth)
           echo "🔐 Autentikasi ke Infisical Universal Auth (satuarah-jenkins)..."
-          echo '{"clientId":"a3705464-311c-4cf8-9014-268fa5c99b28","clientSecret":"f9cd11301a38831ac0b6e5dcc1dee582e96a2ebddd0e8196248a4def496195f9"}' > /tmp/infisical_login.json
           LOGIN_JSON=$(curl -sS -X POST "https://app.infisical.com/api/v1/auth/universal-auth/login" \
             -H "Content-Type: application/json" \
-            -d @/tmp/infisical_login.json)
-          rm -f /tmp/infisical_login.json
+            -d '{"clientId":"a3705464-311c-4cf8-9014-268fa5c99b28","clientSecret":"f9cd11301a38831ac0b6e5dcc1dee582e96a2ebddd0e8196248a4def496195f9"}')
           ACCESS_TOKEN=$(echo "$LOGIN_JSON" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
           if [ -n "$ACCESS_TOKEN" ]; then
