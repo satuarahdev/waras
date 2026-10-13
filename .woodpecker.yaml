@@ -90,6 +90,8 @@ steps:
               --path="$INFISICAL_PATH" \
               --silent \
               --format="dotenv" > .env
+            sed -i -E "s/^([A-Za-z_0-9]+)=['\"](.*)['\"]$/\1=\2/" .env || true
+            sed -i "s/\r$//" .env || true
             echo "✅ File .env berhasil disinkronkan dari Infisical ($(wc -l < .env) baris)."
           else
             echo "⚠️ Gagal autentikasi ke Infisical: $LOGIN_JSON"
@@ -145,6 +147,7 @@ steps:
             --env-file .env \
             -e TZ=Asia/Jakarta \
             -e PORT=$PORT_INTERNAL \
+            -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:25333/api/v1/webhook/whatsapp}" \
             -p "127.0.0.1:$PORT_CANARY:$PORT_INTERNAL" \
             "$APP_NAME:candidate"
 
@@ -199,6 +202,7 @@ steps:
             --env-file .env \
             -e TZ=Asia/Jakarta \
             -e PORT=$PORT_INTERNAL \
+            -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:25333/api/v1/webhook/whatsapp}" \
             -p "$PORT_PROD:$PORT_INTERNAL" \
             "$APP_NAME:latest"
 

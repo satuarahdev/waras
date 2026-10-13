@@ -22,7 +22,7 @@ async fn main() {
         .init();
 
     // Get port from env
-    let port = env::var("PORT").expect("PORT must be set in .env");
+    let port = whatsapp_client::clean_env_var("PORT").unwrap_or_else(|| "3000".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
     // Initialize application state

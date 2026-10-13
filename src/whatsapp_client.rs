@@ -9,11 +9,18 @@ pub struct AppState {
     pub webhook_verify_token: String,
 }
 
+pub fn clean_env_var(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|s| s.trim().trim_matches('"').trim_matches('\'').trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 impl AppState {
     pub fn new() -> Self {
-        let api_token = env::var("FACEBOOK_API_TOKEN").expect("FACEBOOK_API_TOKEN must be set");
-        let phone_number_id = env::var("WHATSAPP_PHONE_NUMBER_ID").expect("WHATSAPP_PHONE_NUMBER_ID must be set");
-        let webhook_verify_token = env::var("WEBHOOK_VERIFY_TOKEN").unwrap_or_else(|_| "my_secret_token".to_string());
+        let api_token = clean_env_var("FACEBOOK_API_TOKEN").expect("FACEBOOK_API_TOKEN must be set");
+        let phone_number_id = clean_env_var("WHATSAPP_PHONE_NUMBER_ID").expect("WHATSAPP_PHONE_NUMBER_ID must be set");
+        let webhook_verify_token = clean_env_var("WEBHOOK_VERIFY_TOKEN").unwrap_or_else(|| "my_secret_token".to_string());
 
         Self {
             http_client: Client::new(),
