@@ -207,6 +207,9 @@ steps:
             -p "127.0.0.1:$PORT_PROD:$PORT_INTERNAL" \
             "$APP_NAME:latest"
 
+          # Sambungkan otomatis ke web-gateway (Cloudflare Tunnel)
+          docker network inspect web-gateway >/dev/null 2>&1 && docker network connect web-gateway "$APP_NAME" || true
+
           # -----------------------------------------------------------------
           # 8. ZERO DOWNTIME STEP 4: Verifikasi Produksi & Rollback Otomatis
           # -----------------------------------------------------------------
