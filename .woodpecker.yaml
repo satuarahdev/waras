@@ -113,7 +113,7 @@ steps:
           fi
 
           # 3. Pastikan Docker Network Siap
-          DOCKER_NETWORK="satuarah-network"
+          DOCKER_NETWORK="web-gateway"
           docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
           echo "🌐 Menggunakan Docker Network: $DOCKER_NETWORK"
 
@@ -206,9 +206,6 @@ steps:
             -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:8080/api/v1/webhook/whatsapp}" \
             -p "127.0.0.1:$PORT_PROD:$PORT_INTERNAL" \
             "$APP_NAME:latest"
-
-          # Sambungkan otomatis ke web-gateway (Cloudflare Tunnel)
-          docker network inspect web-gateway >/dev/null 2>&1 && docker network connect web-gateway "$APP_NAME" || true
 
           # -----------------------------------------------------------------
           # 8. ZERO DOWNTIME STEP 4: Verifikasi Produksi & Rollback Otomatis

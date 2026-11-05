@@ -16,5 +16,5 @@ services:
 
 networks:
   default:
-    name: satuarah-network
+    name: web-gateway
     external: true
