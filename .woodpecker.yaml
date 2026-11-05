@@ -147,7 +147,7 @@ steps:
             --env-file .env \
             -e TZ=Asia/Jakarta \
             -e PORT=$PORT_INTERNAL \
-            -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:25333/api/v1/webhook/whatsapp}" \
+            -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:8080/api/v1/webhook/whatsapp}" \
             -p "127.0.0.1:$PORT_CANARY:$PORT_INTERNAL" \
             "$APP_NAME:candidate"
 
@@ -202,8 +202,8 @@ steps:
             --env-file .env \
             -e TZ=Asia/Jakarta \
             -e PORT=$PORT_INTERNAL \
-            -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:25333/api/v1/webhook/whatsapp}" \
-            -p "$PORT_PROD:$PORT_INTERNAL" \
+            -e WEBHOOK_FORWARD_URL="${WEBHOOK_FORWARD_URL:-http://bantu-backend-rust:8080/api/v1/webhook/whatsapp}" \
+            -p "127.0.0.1:$PORT_PROD:$PORT_INTERNAL" \
             "$APP_NAME:latest"
 
           # -----------------------------------------------------------------

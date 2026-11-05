@@ -50,7 +50,7 @@ pub async fn handle_webhook_event(
     tokio::spawn(async move {
         // Forward to the configured webhook URL
         let forward_url = crate::whatsapp_client::clean_env_var("WEBHOOK_FORWARD_URL")
-            .unwrap_or_else(|| "http://bantu-backend-rust:25333/api/v1/webhook/whatsapp".to_string());
+            .unwrap_or_else(|| "http://bantu-backend-rust:8080/api/v1/webhook/whatsapp".to_string());
         
         match state.http_client.post(&forward_url).json(&payload).send().await {
             Ok(resp) => {

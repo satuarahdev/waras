@@ -5,7 +5,7 @@ services:
     build: .
     container_name: waras
     ports:
-      - "25335:3000"
+      - "127.0.0.1:${HOST_PORT:-25335}:3000"
     environment:
       - TZ=Asia/Jakarta
     env_file:
